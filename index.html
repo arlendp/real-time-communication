@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>socket.io chat</title>
+    <style type="text/css">
+    html,
+    body,
+    .socket-content,
+    .socket-info-content {
+        height: 100%;
+    }
+
+    body {
+        position: relative;
+        margin: 0;
+        font-size: 17px;
+    }
+
+    .socket-content {
+        margin: 0 30px;
+    }
+
+    .socket-info-content {
+        width: 70%;
+        position: relative;
+    }
+
+    .messages-box {
+        padding-top: 30px;
+        height: 80%;
+        overflow: scroll;
+    }
+
+    #messages,
+    #online-list {
+        list-style-type: none;
+        padding-left: 0;
+        margin: 0;
+    }
+
+    form {
+        position: absolute;
+        bottom: 30px;
+        width: 100%;
+    }
+
+    .socket-online-list {
+        width: 30%;
+        float: right;
+    }
+
+    #messages li {
+        margin: 20px 0;
+    }
+
+    #messages li:first-child {
+        margin-top: 0;
+    }
+
+    form input {
+        width: 90%;
+    }
+
+    form button {
+        width: 5%;
+        float: right;
+    }
+
+    #messages li p {
+        line-height: 2;
+        display: inline-block;
+        margin: 0;
+        position: relative;
+        margin-left: 17px;
+    }
+
+    #messages p::before,
+    #messages p::after {
+        z-index: -1;
+    }
+
+    #messages li:nth-child(odd) p::before,
+    #messages li:nth-child(odd) p::after {
+        content: '';
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background-color: #FF9800;
+        position: absolute;
+    }
+
+    #messages li:nth-child(odd) p::before,
+    #messages li:nth-child(even) p::before {
+        left: -17px;
+    }
+
+    #messages li:nth-child(odd) p::after,
+    #messages li:nth-child(even) p::after {
+        right: -17px;
+    }
+
+    #messages li:nth-child(even) p::before,
+    #messages li:nth-child(even) p::after {
+        content: '';
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background-color: #FFEB3B;
+        position: absolute;
+    }
+
+    #messages li:nth-child(odd) p {
+        background-color: #FF9800;
+    }
+
+    #messages li:nth-child(even) p {
+        background-color: #FFEB3B;
+    }
+
+    #tooltip {
+        width: 500px;
+        height: 100px;
+        text-align: center;
+        opacity: 0;
+        position: absolute;
+        margin: 0 auto;
+        left: 0;
+        right: 0;
+        top: 50px;
+        background-color: #03A9F4;
+    }
+    </style>
+</head>
+
+<body>
+    <div class="socket-content">
+        <div class="socket-online-list">
+            <h3>Online Users</h3>
+            <ul id="online-list">
+            </ul>
+        </div>
+        <div class="socket-info-content">
+            <div class="messages-box">
+                <ul id="messages">
+                </ul>
+            </div>
+            <form>
+                <input type="text" placeholder="please input your message here, and if you want to send a private message just input like this '@id:the message'">
+                <button>Send</button>
+            </form>
+        </div>
+    </div>
+    <div id="tooltip">
+        <p></p>
+    </div>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script type="text/javascript">
+    var inputName = window.prompt("please input your nickname");
+    var socket = io();
+
+    //用于发送私信的匹配规则
+    var reg = /^@(\/#[\w-]+):(.+)/;
+    socket.nickname = inputName || 'anonymous';
+
+    //绑定表单的发送消息事件
+    $('form').submit(function(e) {
+        var inputMessage = $('form input').val().trim();
+        if (inputMessage) {
+            socket.emit('someone has typed', socket.id);
+            removeTypingInfo(socket.id);
+            if (reg.test(inputMessage)) {
+                var matchResult = inputMessage.match(reg);
+
+                //如果私信给自己则不做任何处理
+                if (matchResult[1] === ('/#' + socket.id)) {
+                    return false;
+                }
+                socket.emit('private message', matchResult[1], socket.nickname, matchResult[2]);
+                appendList(socket.nickname, matchResult[2] + ' (private to ' + matchResult[1] + ')');
+            } else {
+                socket.emit('chat message', socket.nickname, inputMessage);
+                appendList(socket.nickname, inputMessage);
+            }
+        }
+        $('form input').val('');
+        e.preventDefault();
+    });
+
+    socket.emit('user nickname', socket.nickname);
+
+    //绑定用户输入事件，用于显示用户正在输入
+    $('form input').on('keypress', function(e) {
+        if (e.keyCode !== 13) {
+            socket.emit('someone is typing', socket.id, socket.nickname);
+        }
+    });
+
+    //接收聊天消息
+    socket.on('chat message', function(nickname, msg) {
+        appendList(nickname, msg);
+    });
+
+    //接收私信
+    socket.on('private message', function(nickname, msg) {
+        appendList(nickname, msg + ' (private)');
+    });
+
+    //接收离线消息
+    socket.on('offline', function(id) {
+        $('#tooltip p').text(id + ' is offline').parent().animate({
+            opacity: 1
+        }, 2000).animate({
+            opacity: 0
+        }, 2000);
+    });
+
+    //接收上线消息
+    socket.on('online', function(id) {
+        $('#tooltip p').text(id + ' is online').parent().animate({
+            opacity: 1
+        }, 2000).animate({
+            opacity: 0
+        }, 2000);
+    });
+
+    //接收正在输入的用户信息
+    socket.on('someone is typing', function(id, nickname) {
+        if (!$('#' + id).length) {
+            $('#messages').append($('<li id=' + id + '>').append($('<p>').text(nickname + ' is typing')));
+        }
+    });
+
+    //接收用户输入完毕的消息并进行后续处理
+    socket.on('someone has typed', function(id) {
+        removeTypingInfo(id);
+    });
+
+    //接收在线用户信息
+    socket.on('online users', function(onlineUsers) {
+        $('#online-list').empty();
+        onlineUsers.forEach(function(element) {
+            $('#online-list').append($('<li>').text('id: ' + element.id + ' nickname: ' + element.nickname));
+        });
+    });
+    //将接收到的消息添加到消息列表
+    function appendList(name, msg) {
+        $('#messages').append($('<li>').append($('<p>').text(name + ": " + msg)));
+        scrollToBottom();
+    }
+
+    //每次添加消息时，都更新滚动条位置
+    function scrollToBottom() {
+        $('.messages-box')[0].scrollTop = $('.messages-box')[0].scrollHeight;
+    }
+
+    //移除用户输入状态
+    function removeTypingInfo(id) {
+        if ($('#' + id).length) {
+            $('#' + id).fadeOut('slow', function() {
+                $(this).remove();
+            });
+        }
+    }
+    </script>
+</body>
+
+</html>
