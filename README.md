@@ -6,7 +6,7 @@ This is a real-time communication example in js with socket.io.It implements rea
 To make this program run, you need to install node.js at first.
 
 ##How to use
-First of all, clone this source.
+First of all, clone this source.    
 `$ git clone https://github.com/arlendp/real-time-communication.git`
 and enter the program path.
 `$ cd real-time-communication`
